@@ -135,7 +135,7 @@ for n in range(5):
     print(f"  n={n}: z = {z}")
 
 # ==================================================================
-# 4. HANDWRITTEN ASYMPTOTIC ARGUMENT ANALYSIS (grid replacement)
+# 4. HANDWRITTEN ASYMPTOTIC ARGUMENT ANALYSIS
 # ==================================================================
 print("\n--- 4. Handwritten Asymptotic Argument Analysis ---")
 
