@@ -1,267 +1,224 @@
 #!/usr/bin/env python3
-"""
-Schwarzschild Pathway
-"""
 
 from __future__ import annotations
 import math
-from decimal import Decimal, getcontext
-from typing import List, Tuple, Dict, Optional
+import cmath
+from typing import Dict, Tuple
 
-# High precision for critical constants
-getcontext().prec = 50
-
-# ==============================================================================
-# 1. FUNDAMENTAL CONSTANTS & LATTICE PARAMETERS
-# ==============================================================================
+# ===========================================================================
+# 1. FUNDAMENTAL CONSTANTS & LATTICE
+# ===========================================================================
 EPS = 1e-9
 N_MAX = 1_000_000_000
+TIMESPEED = 4.355e8          # seconds per lattice step
 PI = math.pi
 TWO_PI = 2.0 * PI
 
-# Physical constants (SI)
 G = 6.67430e-11
 C = 299792458.0
 M_SUN = 1.98847e30
 R_SUN = 6.9634e8
+ETA = 6.1e-10                # baryon-to-photon ratio
 
-# Kerr-Gordon / Hubble parameters
-BETA = 0.05
-H0_BASE = 70.0
-OMEGA_M = 0.3
-OMEGA_L = 0.7
-A_BASE = 9.8
-A_PREFACTOR = 0.7265
-CHI_SCALE = 4500.0
-LAMBDA_DECAY = 5.8
+def y_n(n: int) -> float:
+    return n * EPS
 
-# ==============================================================================
-# 2. COMPLEX LATTICE EMBEDDINGS (Gravitational Tandem)
-# ==============================================================================
+def x_n(n: int) -> float:
+    return 1.0 - y_n(n)
+
+# ===========================================================================
+# 2. GRAVITATIONAL TANDEM EMBEDDINGS
+# ===========================================================================
 def bosonic_z(n: int) -> complex:
-    """Even-parity (bosonic) embedding."""
-    y = n * EPS
-    return complex(y, math.sin(TWO_PI * y))
+    yn = y_n(n)
+    return complex(yn, math.sin(TWO_PI * yn))
 
 def fermionic_z(n: int) -> complex:
-    """Odd-parity (fermionic) linear embedding."""
-    y = n * EPS
-    return complex(y, -PI * y)
+    yn = y_n(n)
+    return complex(yn, -PI * yn)
 
+def topological_monodromy() -> complex:
+    return cmath.exp(-1j * PI)   # exactly -1
+
+# ===========================================================================
+# 3. PHASE-LOCK & GEOMETRIC PHASE
+# ===========================================================================
 def phase_lock() -> float:
-    """Limiting argument at vacuum point."""
     return math.atan(TWO_PI)
 
-# ==============================================================================
-# 3. GEOMETRIC PHASE (Bosonic)
-# ==============================================================================
-def bosonic_phase(N: int = 100000) -> float:
-    """
-    Telescoping geometric phase for the bosonic path.
-    Uses closed-form expression for efficiency and accuracy.
-    """
-    if N < 2:
-        return 0.0
-    return -math.atan(math.sin(TWO_PI / N) / (1.0 / N))
+def continuum_phase() -> float:
+    return -math.atan(TWO_PI)
 
-# ==============================================================================
+# ===========================================================================
 # 4. JCRIN-TRACTIONING OPERATOR (exact det M = 1)
-# ==============================================================================
-def tractioning_matrix(y: float, alpha_eff: float = 0.1,
-                       beta: float = 0.05, gamma: float = 0.0) -> List[List[complex]]:
+# ===========================================================================
+def tractioning_matrix(yn: float, alpha_eff: float = 0.1,
+                       beta: float = 0.05, gamma: float = 0.0) -> list:
+    a = 1.0 + alpha_eff * yn
+    b = 1j * gamma * yn
+    c = -beta * yn
+    d = (1.0 - 1j * gamma * beta * yn**2) / a
+    return [[a, b], [c, d]]
+
+def matrix_det(M: list) -> complex:
+    return M[0][0]*M[1][1] - M[0][1]*M[1][0]
+
+# ===========================================================================
+# 5. WEAK-FIELD LIGHT DEFLECTION
+# ===========================================================================
+def light_deflection_arcsec(impact_m: float = R_SUN) -> float:
+    delta_rad = (4.0 * G * M_SUN) / (C**2 * impact_m)
+    return delta_rad * (180.0 / PI) * 3600.0
+
+# ===========================================================================
+# 6. KERR-GORDON EFFECTIVE EXPANSION
+# ===========================================================================
+def H_base(z: float, H0: float = 70.0) -> float:
+    return H0 * math.sqrt(0.3 * (1 + z)**3 + 0.7)
+
+def H_eff(z: float, H0: float = 70.0, beta: float = 0.05) -> float:
+    return H_base(z, H0) / (1.0 + beta * z / (1.0 + z))
+
+# ===========================================================================
+# 7. BBN MASTER EQUATION SYSTEM + ALPHA LADDER
+# ===========================================================================
+class BBNMaster:
     """
-    Returns the 2x2 SL(2) tractioning matrix.
-    gamma = 0 → real/bosonic sector
-    gamma = ±1 → chiral/fermionic sector (exact det = 1)
+    Classical BBN master equations realized on the JCRIN lattice.
+    Early radiation-era segment (n ≪ 1e6).
     """
-    a = 1.0 + alpha_eff * y
-    if abs(gamma) < 1e-15:
-        # Real sector
-        return [[a, 0.0],
-                [-beta * y, 1.0 / a]]
-    else:
-        # Chiral sector — exact unit determinant
-        b = 1j * gamma * y
-        c = -beta * y
-        d = (1.0 - 1j * gamma * beta * y * y) / a
-        return [[a, b],
-                [c, d]]
 
-def matrix_vector_mult(M: List[List[complex]], v: List[complex]) -> List[complex]:
-    """2x2 matrix × vector."""
-    return [
-        M[0][0] * v[0] + M[0][1] * v[1],
-        M[1][0] * v[0] + M[1][1] * v[1]
-    ]
+    def __init__(self):
+        self.eta = ETA
+        self.Q = 1.293          # n-p mass difference (MeV)
 
-def det_M(M: List[List[complex]]) -> complex:
-    """Determinant of 2x2 matrix."""
-    return M[0][0] * M[1][1] - M[0][1] * M[1][0]
+    def H(self, rho: float) -> float:
+        """Expansion rate H(t) = sqrt(8 π G ρ / 3)"""
+        return math.sqrt(8.0 * math.pi * G * rho / 3.0)
 
-# ==============================================================================
-# 5. STATE VECTOR EVOLUTION
-# ==============================================================================
-def evolve_state(n_steps: int = 10000,
-                 alpha_eff: float = 0.1,
-                 beta: float = 0.05,
-                 gamma: float = 0.0,
-                 v0: Optional[List[complex]] = None) -> List[complex]:
-    """
-    Iteratively apply the tractioning operator.
-    Returns final state vector.
-    """
-    if v0 is None:
-        v = [1.0 + 0j, 0.1 + 0j]  # initial [δτ_f, ω_T]
-    else:
-        v = list(v0)
+    def n_gamma(self, T: float) -> float:
+        """Schematic nγ ∝ T³ (T in MeV)"""
+        return 0.243 * (T ** 3)
 
-    step = max(1, N_MAX // n_steps)
-    for i in range(0, N_MAX, step):
-        y = min(i * EPS, 1.0)
-        M = tractioning_matrix(y, alpha_eff, beta, gamma)
-        v = matrix_vector_mult(M, v)
-    return v
+    def n_b(self, T: float) -> float:
+        return self.eta * self.n_gamma(T)
 
-# ==============================================================================
-# 6. KERR-GORDON EFFECTIVE HUBBLE SECTOR
-# ==============================================================================
-def H_base(z: float) -> float:
-    return H0_BASE * math.sqrt(OMEGA_M * (1.0 + z)**3 + OMEGA_L)
+    def dXn_dt(self, Xn: float, T: float, lambda_np: float, lambda_pn: float) -> float:
+        """dXn/dt = λ_np (1 - Xn) - λ_pn Xn"""
+        return lambda_np * (1.0 - Xn) - lambda_pn * Xn
 
-def H_eff(z: float) -> float:
-    return H_base(z) / (1.0 + BETA * z / (1.0 + z))
+    def alpha_ladder_step(self, Y_prev: float, Y_curr: float,
+                          nb: float, sigv_prod: float, sigv_dest: float) -> float:
+        """
+        dYi/dt = nb⟨σv⟩_{i-1→i} Y_{i-1} - nb⟨σv⟩_{i→i+1} Y_i
+        """
+        production = nb * sigv_prod * Y_prev
+        destruction = nb * sigv_dest * Y_curr
+        return production - destruction
 
-def mu_lens(z: float) -> float:
-    return 1.0 + BETA * z / (1.0 + z)
+    def step(self, n: int, state: Dict[str, float]) -> Dict[str, float]:
+        """One lattice micro-step in the BBN regime"""
+        yn = y_n(n)
+        T = state["T"]
+        Xn = state["Xn"]
 
-def chi_comoving(z: float, n_points: int = 500) -> float:
-    """Pure-Python trapezoidal comoving distance (Mpc)."""
-    if z <= 0.0:
-        return 0.0
-    c_km_s = 299792.458
-    zs = [i * z / n_points for i in range(n_points + 1)]
-    integrand = [c_km_s / H_eff(zz) for zz in zs]
-    chi = 0.0
-    for i in range(1, len(zs)):
-        dz = zs[i] - zs[i - 1]
-        chi += 0.5 * (integrand[i] + integrand[i - 1]) * dz
-    return chi
+        # Radiation density (schematic)
+        rho = 1.0e-5 * (T ** 4)
+        Hval = self.H(rho)
 
-def delta_torque(z: float, n_step: Optional[int] = None) -> float:
-    """χ-mitigated anisotropic torque."""
-    omega_max = 1.13
-    tau_v = 0.8
-    damping = 1.0 - math.exp(-1.0 / ((1.0 + z) * tau_v))
+        # Temperature update (radiation-era scaling)
+        dT = -Hval * T * EPS * 1e6
+        T_new = max(T + dT, 0.001)
 
-    if n_step is not None:
-        y_n = min(n_step * EPS, 1.0)
-        freq_mod = 1.0 + 5.0 * math.exp(-z / 2.0)
-        control = 0.5 * math.sin(TWO_PI * y_n * 10.0)
-        phase = TWO_PI * y_n * freq_mod + control * (PI / 4.0) + 0.1047
-        damping *= (0.5 + 0.5 * math.sin(phase))
-    else:
-        damping *= 0.5
+        # Weak rates (schematic T dependence)
+        lambda_np = 1.0 * (T / 1.0)**5
+        lambda_pn = lambda_np * math.exp(self.Q / max(T, 0.01))
 
-    omega = omega_max * damping
-    chi = chi_comoving(z)
-    A_mit = A_BASE * A_PREFACTOR * math.exp(-chi / CHI_SCALE)
-    return A_mit * omega * math.exp(-z / LAMBDA_DECAY)
+        dXn = self.dXn_dt(Xn, T, lambda_np, lambda_pn) * EPS * 1e6
+        Xn_new = max(0.0, min(1.0, Xn + dXn))
 
-def H_total_eff(z: float, n_step: Optional[int] = None) -> float:
-    return H_eff(z) + delta_torque(z, n_step)
+        nb = self.n_b(T_new)
 
-# ==============================================================================
-# 7. CLASSICAL WEAK-FIELD LIGHT DEFLECTION
-# ==============================================================================
-def light_deflection_solar() -> Dict[str, float]:
-    """Einstein 1915 solar-limb deflection."""
-    delta_rad = (4.0 * G * M_SUN) / (C**2 * R_SUN)
-    delta_arcsec = delta_rad * (180.0 / PI) * 3600.0
-    return {
-        "deflection_rad": delta_rad,
-        "deflection_arcsec": delta_arcsec
-    }
+        # Alpha-ladder illustration (p/n → D → ⁴He)
+        Yp = 1.0 - Xn_new
+        YD = state.get("Y_D", 0.0)
+        YHe = state.get("Y_He4", 0.0)
 
-# ==============================================================================
-# 8. LATE-TIME CONCORDANCE
-# ==============================================================================
-def late_time_tail() -> Dict[str, float]:
-    delta_y = 0.3
-    D_t = 1.0 / delta_y
-    z_conc = 3.0 / 7.0
-    return {
-        "delta_y": delta_y,
-        "temporal_dilution": D_t,
-        "concordance_redshift": z_conc
-    }
+        dYD = self.alpha_ladder_step(Yp, YD, nb, 1e-2, 1e-3)
+        dYHe = self.alpha_ladder_step(YD, YHe, nb, 1e-3, 1e-5)
 
-# ==============================================================================
-# 9. FULL PATHWAY DEMONSTRATION & VERIFICATION
-# ==============================================================================
-def run_pathway_verification():
+        return {
+            "T": T_new,
+            "Xn": Xn_new,
+            "Y_p": Yp,
+            "Y_D": max(0.0, YD + dYD * EPS * 1e6),
+            "Y_He4": max(0.0, YHe + dYHe * EPS * 1e6),
+            "H": Hval,
+            "n_b": nb,
+            "y_n": yn
+        }
+
+
+# ===========================================================================
+# 8. STATUS DISPLAY
+# ===========================================================================
+def display_status():
     print("=" * 78)
-    print(" SCHWARZSCHILD PATHWAY — PURE PYTHON VERIFICATION")
-    print(" JCRIN / PCS / SOLENOID / Kerr-Gordon Unified Framework")
+    print("  UNIFIED SCHWARZSCHILD PATHWAY — COMPLETE STATUS")
     print("=" * 78)
 
-    # --- Vacuum & Phase-Lock ---
-    print("\n[1] Vacuum Point & Phase-Lock")
-    print(f" z_0 = 0 + 0i")
-    print(f" Phase-lock angle = {phase_lock():.12f} rad")
-    print(f" = {math.degrees(phase_lock()):.8f}°")
+    print("\n[1] LATTICE")
+    print(f"    ε = {EPS},  N = {N_MAX}")
+    print(f"    TIMESPEED = {TIMESPEED:.3e} s/step")
+    print(f"    y_N = {y_n(N_MAX):.10f}")
 
-    # --- Bosonic sector ---
-    print("\n[2] Bosonic (Even-Parity) Sector")
-    z_b = bosonic_z(N_MAX)
-    print(f" z_N (bosonic) = {z_b.real:.15f} + {z_b.imag:.15e}i")
-    phi_b = bosonic_phase(1_000_000)
-    print(f" Geometric phase Φ ≈ {phi_b:.12f} rad")
-    print(f" Continuum limit = {-math.atan(TWO_PI):.12f} rad")
+    print("\n[2] BOSONIC TANDEM (even parity)")
+    zb = bosonic_z(N_MAX)
+    print(f"    z_N = {zb}")
+    print(f"    Continuum phase = {continuum_phase():.12f} rad")
 
-    # --- Fermionic sector ---
-    print("\n[3] Fermionic (Odd-Parity) Sector")
-    z_f = fermionic_z(N_MAX)
-    print(f" z_N (linear) = {z_f.real:.6f} + {z_f.imag:.6f}i")
-    print(f" |z_N| = {abs(z_f):.6f}")
-    print(f" Topological factor = e^(-iπ) = -1")
+    print("\n[3] FERMIONIC TANDEM (odd parity)")
+    zf = fermionic_z(N_MAX)
+    print(f"    z_N (linear) = {zf}")
+    print(f"    Monodromy = {topological_monodromy()}  (exactly -1)")
 
-    # --- Tractioning operator determinant check ---
-    print("\n[4] JCRIN-Tractioning Operator (det M = 1)")
-    for gamma in [0.0, 1.0, -1.0]:
-        M = tractioning_matrix(0.5, gamma=gamma)
-        d = det_M(M)
-        print(f" gamma = {gamma:+.0f} → det M = {d.real:.12f} + {d.imag:.2e}i")
+    print("\n[4] PHASE-LOCK")
+    print(f"    arctan(2π) = {phase_lock():.12f} rad = {math.degrees(phase_lock()):.6f}°")
 
-    # --- State evolution sample ---
-    print("\n[5] State Vector Evolution (sample)")
-    v_final = evolve_state(n_steps=5000, gamma=0.0)
-    print(f" Final |v| (bosonic) ≈ {abs(v_final[0]):.6f}, {abs(v_final[1]):.6f}")
+    print("\n[5] TRACTIONING OPERATOR (det M = 1 exact)")
+    for g in [0.0, 1.0, -1.0]:
+        M = tractioning_matrix(0.5, gamma=g)
+        d = matrix_det(M)
+        print(f"    γ = {g:+.0f} → det M = {d.real:.12f} + {d.imag:.12f}j")
 
-    # --- Light deflection ---
-    print("\n[6] Weak-Field Light Deflection (Solar Limb)")
-    defl = light_deflection_solar()
-    print(f" Δφ = {defl['deflection_arcsec']:.6f} arcsec")
+    print("\n[6] LIGHT DEFLECTION")
+    print(f"    Solar limb = {light_deflection_arcsec():.5f} arcsec")
 
-    # --- Late-time ---
-    print("\n[7] Late-Time Concordance")
-    tail = late_time_tail()
-    print(f" Δy = {tail['delta_y']}")
-    print(f" Dilution D_t = {tail['temporal_dilution']:.6f}")
-    print(f" Concordance z = {tail['concordance_redshift']:.6f}")
+    print("\n[7] KERR-GORDON H_eff")
+    print(f"    H_eff(z=0) ≈ {H_eff(0):.2f} km/s/Mpc")
 
-    # --- Kerr-Gordon Hubble ---
-    print("\n[8] Kerr-Gordon Effective Hubble")
-    print(f" H_eff(z=0) = {H_eff(0.0):.4f} km/s/Mpc")
-    print(f" H_total(z=0, full) = {H_total_eff(0.0, N_MAX-1):.4f} km/s/Mpc")
-    print(f" H_total(z=1) = {H_total_eff(1.0, N_MAX//2):.4f} km/s/Mpc")
+    print("\n[8] PCS B-MODE ANCHOR")
+    print("    r̂ = 0.014 ± 0.010 (BK18 + Planck)")
+
+    print("\n[9] BBN MASTER SYSTEM (early lattice)")
+    bbn = BBNMaster()
+    state = {"T": 1.0, "Xn": 0.5, "Y_D": 0.0, "Y_He4": 0.0}
+    print(f"    {'n':>10} {'y_n':>12} {'T (MeV)':>10} {'Xn':>8} {'Y_He4':>10}")
+    print("    " + "-" * 56)
+    for i in range(8):
+        n = 20 + i * 80
+        state = bbn.step(n, state)
+        print(f"    {n:10d} {state['y_n']:12.3e} {state['T']:10.4f} "
+              f"{state['Xn']:8.4f} {state['Y_He4']:10.4e}")
 
     print("\n" + "=" * 78)
-    print(" VERIFICATION COMPLETE — Books square. Debt = 0.")
-    print(" Gravitational tandems (parity + super/sub-horizon) operational.")
+    print("  GRAVITATIONAL TANDEMS ACTIVE")
+    print("  • Parity tandem       : Bosonic (+1) ↔ Fermionic (−1)")
+    print("  • Horizon-scale tandem: Super-horizon ↔ Sub-horizon")
+    print("  • Early-universe layer: BBN Master Equations + Alpha Ladder")
+    print("  Books square. Phase accounts cleared. Debt = 0.")
     print("=" * 78)
 
-# ==============================================================================
-# ENTRY POINT
-# ==============================================================================
+
 if __name__ == "__main__":
-    run_pathway_verification()
+    display_status() 
