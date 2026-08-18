@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+"""
+The Schwarzchild Solenoid Pathway
+"""
 
 from __future__ import annotations
 import math
