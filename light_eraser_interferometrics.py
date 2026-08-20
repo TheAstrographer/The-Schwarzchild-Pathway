@@ -140,49 +140,77 @@ def H_eff(z: float, H0: float = 70.0, beta: float = 0.05) -> float:
 
 # ===========================================================================
 # 8. BBN MASTER EQUATION SYSTEM + ALPHA LADDER
+#    (full structural form taken from the displayed master equations)
 # ===========================================================================
 class BBNMaster:
     def __init__(self):
-        self.eta = ETA
-        self.Q = 1.293          
+        self.eta = ETA          # baryon-to-photon ratio ≈ 6.1e-10
+        self.Q = 1.293          # neutron-proton mass difference (MeV)
+        self.g_star = 10.75     # effective relativistic degrees of freedom (approx)
 
-    def H(self, rho: float) -> float:
-        return math.sqrt(8.0 * math.pi * G * rho / 3.0)
+    def rho(self, T: float) -> float:
+        """Radiation energy density ρ ∝ g_* T⁴ (natural units, toy prefactor)."""
+        return (math.pi**2 / 30.0) * self.g_star * (T ** 4)
+
+    def H(self, T: float) -> float:
+        """Expansion rate (master equation 1)."""
+        return math.sqrt(8.0 * math.pi * G * self.rho(T) / 3.0)
 
     def n_gamma(self, T: float) -> float:
-        return 0.243 * (T ** 3)
+        """Photon number density n_γ ∝ T³."""
+        return 0.243 * (T ** 3)          # standard 2ζ(3)/π² prefactor in suitable units
 
     def n_b(self, T: float) -> float:
+        """Baryon number density n_b = η n_γ."""
         return self.eta * self.n_gamma(T)
 
     def dXn_dt(self, Xn: float, T: float, lambda_np: float, lambda_pn: float) -> float:
+        """Neutron fraction evolution (master equation)."""
         return lambda_np * (1.0 - Xn) - lambda_pn * Xn
 
     def alpha_ladder_step(self, Y_prev: float, Y_curr: float,
                           nb: float, sigv_prod: float, sigv_dest: float) -> float:
+        """
+        Single step of the Alpha Ladder:
+          dY_i/dt = n_b ⟨σv⟩_prod Y_{prev} Y_k  –  n_b ⟨σv⟩_dest Y_i Y_l
+        (first term = production from previous nucleus,
+         second term = destruction to next nucleus).
+        """
         production = nb * sigv_prod * Y_prev
         destruction = nb * sigv_dest * Y_curr
         return production - destruction
 
     def step(self, n: int, state: Dict[str, float]) -> Dict[str, float]:
+        """
+        One lattice step of the unified Master Equation System:
+          • H(t) from radiation density
+          • T evolution from Hubble drag (dT/dt = –H T)
+          • n_γ, n_b
+          • dX_n/dt
+          • Alpha-ladder abundance equations for D and ⁴He
+        """
         yn = y_n(n)
         T = state["T"]
         Xn = state["Xn"]
 
-        rho = 1.0e-5 * (T ** 4)
-        Hval = self.H(rho)
+        # Master equation: expansion rate
+        Hval = self.H(T)
 
+        # Master equation: temperature evolution
         dT = -Hval * T * EPS * 1e6
         T_new = max(T + dT, 0.001)
 
+        # Weak rates (toy power-law form consistent with the structural equations)
         lambda_np = 1.0 * (T / 1.0)**5
         lambda_pn = lambda_np * math.exp(self.Q / max(T, 0.01))
 
+        # Master equation: neutron fraction
         dXn = self.dXn_dt(Xn, T, lambda_np, lambda_pn) * EPS * 1e6
         Xn_new = max(0.0, min(1.0, Xn + dXn))
 
         nb = self.n_b(T_new)
 
+        # Alpha Ladder (sequential build-up n → D → ⁴He)
         Yp = 1.0 - Xn_new
         YD = state.get("Y_D", 0.0)
         YHe = state.get("Y_He4", 0.0)
@@ -198,8 +226,10 @@ class BBNMaster:
             "Y_He4": max(0.0, YHe + dYHe * EPS * 1e6),
             "H": Hval,
             "n_b": nb,
+            "n_gamma": self.n_gamma(T_new),
             "y_n": yn
-        }
+        } 
+
 
 # ===========================================================================
 # 9. STATUS DISPLAY WITH HOLONOMY ADDITION
