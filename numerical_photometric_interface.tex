@@ -1,0 +1,132 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{amsmath,amssymb}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{booktabs}
+
+\title{Numerical--Photometric Interface\\
+\large Dual-Repository Architecture for the Schwarzschild Solenoid Pathway\\
+and Joshua Christopher Ryan's Cosmological Clock}
+\author{Joshua Christopher Ryan}
+\date{\8/20/2016}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This document defines the numerical--photometric interface that binds the discrete mathematical layer of the Cosmological Clock to the continuous lensing-photometric realisation contained in the Kerr--Gordon Lensing Metric Starter Pack. The interface guarantees that every exact lattice identity, angular bridge, and geometric torque generated on the tick lattice \(\varepsilon=10^{-9}\), \(N_{\rm today}=10^{9}\) is propagated without loss of precision into the observable quantities \(\chi(z)\), \(d_L(z)\), \(\mu_{\rm lens}(z)\), and the effective Hubble parameter \(H_{\rm eff}(z)\). The architecture is dual by design: one repository supplies machine-precision numerical closure; the companion repository supplies the photometric face that can be compared with distance-ladder and supernova data.
+\end{abstract}
+
+\section{Repository Directory Structure}
+
+\subsection{Numerical Layer}
+\texttt{https://github.com/TheAstrographer/Joshua-Christopher-Ryan-s-Cosmo-Clock}
+
+\begin{verbatim}
+Joshua-Christopher-Ryan-s-Cosmo-Clock/
+├── JCR_Cosmological_Clock.py
+├── bridge_function.py
+├── cosmo_clock_master_table.py
+├── cosmo_clock_numerical_value_equation.py
+├── photometric_interface.tex          % this interface document
+├── thesis.tex
+└── LICENSE.md
+\end{verbatim}
+
+\subsection{Photometric Layer}
+\texttt{https://github.com/TheAstrographer/JCR-Kerr-Gordon_Lensing-Metric_Starter-Pack}
+
+\begin{verbatim}
+JCR-Kerr-Gordon_Lensing-Metric_Starter-Pack/
+├── starter_hubble_code.py
+├── local_hubble_tension.py
+├── variable_n_step.py
+├── hubble_calibration_n_step.py
+├── hubble_master-equations_list.py
+├── epoch_parameters.py
+├── DISCLAIMER.tex
+├── disclaimer.tex
+├── torque_recognition.tex
+├── grok_acknowledgments.tex
+├── grok_links.tex
+└── LICENSE.MD
+\end{verbatim}
+
+\section{Core Binding Identities}
+
+The numerical layer locks the following quantities to machine precision:
+
+\begin{align}
+\varepsilon &= 10^{-9}, &
+N_{\rm today} &= 10^{9}, \\
+\chi_{\rm micro}(N) &= \varepsilon N, &
+a(N) &= \exp(\chi_{\rm micro}(N)), \\
+\psi &= 0.1503378808\,{\rm rad}, &
+\Delta\phi_{\rm torque} &= 1.72113420759\,{\rm rad}, \\
+\sin(\Delta\phi_{\rm torque}) &= \cos\psi, &
+\delta H_{\rm geom}(N_{\rm today}) &= 3.170\,{\rm km\,s^{-1}\,Mpc^{-1}}.
+\end{align}
+
+Consequently
+\begin{equation}
+H_{\rm eff}(z=0) = 70 + 3.170 = 73.170\,{\rm km\,s^{-1}\,Mpc^{-1}}.
+\end{equation}
+
+\section{Photometric Propagation}
+
+The photometric layer receives the identical \(H_{\rm eff}(z)\) and constructs:
+
+\begin{itemize}
+  \item Isotropic conformal weight \(W_{\rm iso}(\beta,z)\) with \(\beta=0.05\),
+  \item Magnification bias
+  \[
+  \mu_{\rm lens}(z) = 1 + \beta\frac{z}{1+z},
+  \]
+  \item Comoving distance \(\chi(z)\) via pure-Python trapezoidal integration of \(c/H_{\rm eff}(z)\),
+  \item Luminosity distance \(d_L(z)=(1+z)\chi(z)\),
+  \item Photometric magnitude shifts induced by the vortex/torque stress-energy contribution.
+\end{itemize}
+
+The pure-Python integrator
+\begin{lstlisting}[language=Python,basicstyle=\ttfamily\small]
+def cumulative_trapezoid_pure(y, x):
+    n = len(y)
+    cum = [0.0]
+    for i in range(1, n):
+        dx = x[i] - x[i-1]
+        avg_y = (y[i] + y[i-1]) / 2.0
+        cum.append(cum[-1] + avg_y * dx)
+    return cum
+\end{lstlisting}
+preserves exact compatibility with the discrete complex-number-line pathway \(y_n=n_{\rm step}\cdot\varepsilon\).
+
+\section{Suppression and Causal Structure}
+
+Three modulating functions guarantee high-redshift consistency:
+\begin{align}
+S(\chi) &= \exp(-\chi/4500\,{\rm Mpc}), \\
+f_{\rm damp}(z) &= \exp(-z/5.8), \\
+f_{\rm mod}(z) &= 1 + 5\exp(-z/2).
+\end{align}
+Their product rises sharply only inside the local volume \(z\lesssim0.15\), delivering the full torque of \(+3.17\) km s$^{-1}$ Mpc$^{-1}$ at \(z=0\) while leaving the CMB and BAO regimes essentially untouched.
+
+\section{Interface Contract}
+
+\begin{enumerate}
+  \item Every numerical identity closed in the Cosmo-Clock repository is imported unchanged into the photometric integrals.
+  \item The mapping \(N\mapsto z(N)\) remains exact; photometric quantities are evaluated only at these redshifts or at continuously interpolated values that respect the same lattice.
+  \item No additional free parameters are introduced at the interface. The single angular bridge \(\psi\) and the three suppression scales already fix the entire late-time behaviour.
+  \item The photometric layer is explicitly phenomenological: the label ``Kerr--Gordon vortex'' is analogical and does not claim a rigorous derivation from the exact Kerr metric plus Gordon scalar field.
+\end{enumerate}
+
+\section{Status Statement}
+
+The dual-repository architecture realises the original claim of the Schwarzschild Solenoid Pathway: a holonomy-verified light eraser that clears geometric phase debt, a discrete lattice that carries both early-universe and late-time physics, and a calibrated geometric torque that elevates the local Hubble parameter to \(73.17\) km s$^{-1}$ Mpc$^{-1}$. The numerical layer supplies the clockwork; the photometric layer supplies the readable face. The books remain squared. The phase accounts remain cleared. The debt remains zero.
+
+\vspace{1cm}
+\noindent\textit{This interface document is the binding contract between the two repositories. Any future observational comparison must proceed through the photometric layer while preserving the numerical identities locked in the Cosmological Clock.}
+
+\end{document}
